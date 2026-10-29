@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Leaflet スマホ方位角連動</title>
+    <title>Leaflet Rotate</title>
     
     <!-- 1. Leaflet の CSS と JS （標準機能のみを使用） -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -68,18 +68,36 @@
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        // 3. 自分の向きを表す「矢印マーカー」を設置
+        // 3. 矢印マーカー
         const compassIcon = L.divIcon({
             html: '<div id="arrow" class="compass-arrow">⬆️</div>',
             className: 'custom-div-icon',
             iconSize: [40, 40],
             iconAnchor: [20, 20]
         });
-        const marker = L.marker([37.94413,139.33510], { icon: compassIcon }).addTo(map);
-
+        let marker = null;
         let isTracking = false;
 
-        // 4. 方位角を取得して「矢印」を回転させる
+        //
+        map.on('locationfound', function(e) {
+            const currentPos = e.latlng;
+
+            // 地図の中心を現在地へ移動
+            map.setView(currentPos, 16);
+
+            // マーカーがまだ作られていなければ作成、あれば位置を更新
+            if (!marker) {
+                marker = L.marker(currentPos, { icon: compassIcon }).addTo(map);
+            } else {
+                marker.setLatLng(currentPos);
+            }
+        })
+        //error
+        map.on('locationerror'function(e){
+            alert("位置情報の取得に失敗しました:"+e.message);
+        });
+        
+        //
         function handleOrientation(event) {
             let heading = null;
             if (event.webkitCompassHeading !== undefined) {
@@ -104,6 +122,8 @@
             if (isTracking) {
                 window.removeEventListener('deviceorientation', handleOrientation, true);
                 window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+                map.stopLocate();
+                
                 btn.innerText = '🧭 コンパス連動を開始';
                 btn.classList.remove('active');
                 
@@ -112,6 +132,8 @@
                 isTracking = false;
                 return;
             }
+
+            map.locate({setView:true,watch:true,enableHighAccuracy:true});
 
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
