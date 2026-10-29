@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Leaflet スマホ方位角連動</title>
+    
+    <!-- 1. Leaflet の CSS と JS -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <script src="https://unpkg.com"></script>
+
+    <!-- 2. Leaflet.Rotate プラグインの JS (CSSは不要) -->
+    <script src="https://unpkg.com"></script>
+
+    <style>
+        /* 画面いっぱいに地図を表示 */
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        /* コンパス開始ボタンのスタイル */
+        #compass-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            padding: 12px 20px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        #compass-btn.active {
+            background: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ボタンと地図の配置 -->
+    <button id="compass-btn" onclick="toggleCompass()">🧭 コンパス連動を開始</button>
+    <div id="map"></div>
+
+    <script>
+        // 1. 地図の初期化（rotate: true を指定）
+        const map = L.map('map', {
+            rotate: true,
+            touchRotate: true,
+            rotateControl: true // 画面左上に標準の羅針盤コントロールを表示
+        }).setView([35.681236, 139.767125], 16); // 東京駅周辺
+
+        // 2. 背景地図（OpenStreetMap）の追加
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // 3. 中心に目印のマーカーを設置
+        const marker = L.marker([35.681236, 139.767125]).addTo(map)
+            .bindPopup('スマートフォンを回すと地図が回転します')
+            .openPopup();
+
+        let isTracking = false;
+
+        // 4. 方位角（Heading）の取得と地図への反映
+        function handleOrientation(event) {
+            let heading = null;
+
+            // iOS (Safari) 向け
+            if (event.webkitCompassHeading !== undefined) {
+                heading = event.webkitCompassHeading;
+            } 
+            // Android (Chrome) 向け
+            else if (event.alpha !== null) {
+                // 通常の alpha は起動時基準のため、逆回転させて北を基準に補正
+                heading = 360 - event.alpha; 
+            }
+
+            if (heading !== null) {
+                // 地図の向きをスマートフォンの向き（方位角）にセット
+                map.setBearing(heading);
+            }
+        }
+
+        // 5. ボタンが押された時の処理（iOS対策）
+        function toggleCompass() {
+            const btn = document.getElementById('compass-btn');
+
+            if (isTracking) {
+                // 停止処理
+                window.removeEventListener('deviceorientation', handleOrientation, true);
+                window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+                btn.innerText = '🧭 コンパス連動を開始';
+                btn.classList.remove('active');
+                map.setBearing(0); // 地図の向きを北に戻す
+                isTracking = false;
+                return;
+            }
+
+            // iOS 13+ の場合はユーザーの明示的な許可が必要
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            startListening();
+                        } else {
+                            alert('方位情報の取得が拒否されました。設定アプリからブラウザのモーションセンサーを許可してください。');
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Android や古いiOS、PC向け
+                startListening();
+            }
+        }
+
+        // イベントリスナーの登録とボタン表示の更新
+        function startListening() {
+            const btn = document.getElementById('compass-btn');
+            
+            // Androidで絶対方位を取るために 'deviceorientationabsolute' があればそちらを優先
+            if ('ondeviceorientationabsolute' in window) {
+                window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation, true);
+            }
+
+            btn.innerText = '🛑 連動を停止';
+            btn.classList.add('active');
+            isTracking = true;
+        }
+    </script>
+</body>
+</html>
