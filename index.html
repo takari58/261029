@@ -102,9 +102,9 @@
             iconAnchor: [16, 16]
         });
         
-        // 最初は非表示にしておき、現在地が取れたら表示する
-        let marker = null; 
+        //let marker = null; 
         let isTracking = false;
+        let currentHeading = 0;
 
         // 3. 現在地を取得して地図の初期位置にする
         if (navigator.geolocation) {
@@ -112,19 +112,21 @@
                 (position) => {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
-                    
-                    // 地図を現在地に移動
-                    map.setView([lat, lng], 17);
-                    
-                    // 現在地に矢印マーカーを配置
-                    marker = L.marker([lat, lng], { icon: compassIcon }).addTo(map);
+                    if(!marker){
+                        marker = L.marker([lat,lng],{icon:compassIcon}).addTo(map);
+                        map.setView([lat,lng],17);
+                    }else{
+                        marker.setLatLng([lat,lng]);
+                    }
                 },
                 (error) => {
-                    console.error("位置情報の取得に失敗しました:", error);
-                    // 失敗した場合はデフォルト位置にマーカーを表示
-                    marker = L.marker([37.94413,139.33510], { icon: compassIcon }).addTo(map);
+                    console.error("位置情報の追従に失敗:",error);
                 },
-                { enableHighAccuracy: true }
+                {
+                    enableHighAccuracy:true,
+                    maximumAge:0,
+                    timeout:5000
+                }
             );
         }
 
@@ -143,6 +145,7 @@
             }
 
             if (heading !== null && marker) {
+                currentHeading = heading;
                 const arrowDiv = document.getElementById('arrow');
                 if (arrowDiv) {
                     arrowDiv.style.transform = `rotate(${heading}deg)`;
