@@ -60,8 +60,8 @@
     <div id="map"></div>
 
     <script>
-        // 1. 地図の初期化（エラーの原因だったrotateオプションを削除）
-        const map = L.map('map').setView([35.681236, 139.767125], 16); // 東京駅周辺
+        // 1. 地図の初期化
+        const map = L.map('map').setView([37.94413,139.33510], 16);
 
         // 2. 背景地図の追加
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -75,7 +75,7 @@
             iconSize: [40, 40],
             iconAnchor: [20, 20]
         });
-        const marker = L.marker([35.681236, 139.767125], { icon: compassIcon }).addTo(map);
+        const marker = L.marker([37.94413,139.33510], { icon: compassIcon }).addTo(map);
 
         let isTracking = false;
 
