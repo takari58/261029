@@ -21,16 +21,21 @@
             font-family: sans-serif;
             background-color: #f4f4f4;
         }
+
+        #viewport-wrapper {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
         
-        /* 2本指操作の対象となるコンテナ（背景の地図要素） */
         #map-container {
-            width: 100%;
-            height: 100%;
+            width: 150vw;
+            height: 150vh;
             position: absolute;
-            top: 0;
-            left: 0;
+            top: -25vh;
+            left: -25vw;
             z-index: 1;
-            /* 指をひねった角度に合わせて、地図の入った箱ごとCSSで回転させます */
             transform: rotate(calc(var(--map-rotation, 0deg)));
             transform-origin: center center;
         }
@@ -92,7 +97,7 @@
 </head>
 <body>
 
-    <!-- 操作パネル -->
+    <!-- 操作パネル（地図の外側、画面最前面に固定） -->
     <div id="control-panel">
         <button id="compass-btn" onclick="toggleCompass()">コンパス開始</button>
         <div>
@@ -102,18 +107,22 @@
         </div>
     </div>
 
-    <!-- 地図を包む回転用コンテナ -->
-    <div id="map-container">
-        <div id="map"></div>
+    <!-- 画面サイズのマスク用の箱 -->
+    <div id="viewport-wrapper">
+        <!-- 150%に拡大された回転用の箱 -->
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
     </div>
 
     <script>
-        // 初期の仮位置（GPSが取れるまでの表示用）
         const defaultCoords = [37.94413, 139.33510];
 
-        // 1. 地図の初期化（ Leaflet 標準の軽量な初期化のみを行います）
+        // 1. 地図の初期化
         const map = L.map('map', {
-            zoomControl: true
+            zoomControl: true,
+            // 2本指での拡大縮小時に、見えない画面外の地図タイルも先回りで多めに読み込ませる設定
+            keepBuffer: 3 
         }).setView(defaultCoords, 16);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -124,11 +133,10 @@
         const compassIcon = L.divIcon({
             html: '<div id="arrow" class="compass-arrow">⬆️</div>',
             className: 'custom-div-icon',
-            iconSize:[40,40],
+            iconSize: [40, 40],
             iconAnchor: [20, 20]
         });
         
-        // 起動直後から仮位置にマーカーを表示（GPSフリーズ対策）
         let marker = L.marker(defaultCoords, { icon: compassIcon }).addTo(map); 
         
         let isTracking = false;
@@ -141,10 +149,8 @@
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     
-                    // マーカーの位置を自動で動かす
                     marker.setLatLng([lat, lng]);
 
-                    // 初回のみ、現在地を画面中央にする
                     if (isFirstLocation) {
                         map.setView([lat, lng], 17);
                         isFirstLocation = false;
@@ -157,32 +163,39 @@
             );
         }
 
-        // 4. ★バグの原因となる外部プラグインに頼らず、2本指ジェスチャーを自前で正確に計算
+        // 4. 2本指ジェスチャーの正確な計算
         let startAngle = 0;
         let currentMapAngle = 0;
         const mapContainer = document.getElementById('map-container');
 
         window.addEventListener('touchstart', (e) => {
             if (e.touches.length === 2) {
-                // 2本の指が結ぶ直線の初期角度を計算
-                startAngle = Math.atan2(e.touches[1].pageY - e.touches[0].pageY, e.touches[1].pageX - e.touches[0].pageX) * 180 / Math.PI;
+                // 2本の指の座標から角度を正しく算出
+                startAngle = Math.atan2(
+                    e.touches[1].pageY - e.touches[0].pageY, 
+                    e.touches[1].pageX - e.touches[0].pageX
+                ) * 180 / Math.PI;
             }
         }, { passive: true });
 
         window.addEventListener('touchmove', (e) => {
             if (e.touches.length === 2) {
-                // 動いたあとの2本の指の角度を計算
-                const nowAngle = Math.atan2(e.touches[1].pageY - e.touches[0].pageY, e.touches[1].pageX - e.touches[0].pageX) * 180 / Math.PI;
-                // ひねった分の差分角度を算出
-                const diffAngle = nowAngle - startAngle;
+                const nowAngle = Math.atan2(
+                    e.touches[1].pageY - e.touches[0].pageY, 
+                    e.touches[1].pageX - e.touches[0].pageX
+                ) * 180 / Math.PI;
                 
+                const diffAngle = nowAngle - startAngle;
                 currentMapAngle += diffAngle;
                 startAngle = nowAngle;
 
-                // 地図コンテナ全体をCSSで回転させる
+                // 1.5倍大きい地図コンテナを回転
                 mapContainer.style.setProperty('--map-rotation', `${currentMapAngle}deg`);
             }
         }, { passive: true });
+
+        // 地図の要素サイズがCSSで変わったため、Leafletにサイズ変更を再認識させてバグを防ぐ
+        setTimeout(() => { map.invalidateSize(); }, 300);
 
         // 5. センサー情報（スマホの向き）を取得して反映
         function handleOrientation(event) {
@@ -192,18 +205,17 @@
 
             let heading = null;
             if (event.webkitCompassHeading !== undefined) {
-                heading = event.webkitCompassHeading; // iOS (Safari)
+                heading = event.webkitCompassHeading;
             } else if (event.alpha !== null) {
-                heading = 360 - event.alpha; // Android (Chrome)
+                heading = 360 - event.alpha;
             }
 
             if (heading !== null) {
-                // 矢印マーカーにスマホの向きをCSS変数で渡す
                 document.documentElement.style.setProperty('--heading', `${heading}deg`);
             }
         }
 
-        // 6. ボタン連動処理（iOSのセキュリティ制限解除対応）
+        // 6. ボタン連動処理
         function toggleCompass() {
             const btn = document.getElementById('compass-btn');
 
@@ -223,7 +235,7 @@
                         if (permissionState === 'granted') {
                             startListening();
                         } else {
-                            alert('方位情報の取得が拒否されました。設定アプリからモーションセンサーを許可してください。');
+                            alert('方位情報の取得が拒否されました。');
                         }
                     })
                     .catch(console.error);
@@ -245,5 +257,4 @@
         }
     </script>
 </body>
-</html>
 </html>
