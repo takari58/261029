@@ -6,8 +6,8 @@
     <title>Leaflet Rotate & Compass</title>
     
     <!-- 1. Leaflet 標準の CSS と JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <script src="https://unpkg.com"></script>
 
     <!-- 2. 地図回転プラグインの CSS と JS（2本指回転に必須） -->
     <link rel="stylesheet" href="https://unpkg.com" />
@@ -73,7 +73,6 @@
             font-size: 32px;
             text-align: center;
             line-height: 1;
-            /* 地図回転と連動するため transition は無しがスムーズです */
         }
     </style>
 </head>
@@ -92,12 +91,15 @@
     <div id="map"></div>
 
     <script>
-        // 1. 地図の初期化（回転プラグインのオプションを有効化）
+        // 初期位置（仮の設定）
+        const defaultCoords = [37.94413, 139.33510];
+
+        // 1. 地図の初期化
         const map = L.map('map', {
-            rotate: true,          // 回転機能を有効化
-            touchRotate: true,     // ★2本指での地図回転を有効化
-            rotateControl: false   // 標準のコンパスマーク（右上のパネルと被るため非表示）
-        }).setView([37.94413, 139.33510], 16);
+            rotate: true,          
+            touchRotate: true,     // 2本指での地図回転を有効化
+            rotateControl: false   
+        }).setView(defaultCoords, 16);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
@@ -111,24 +113,27 @@
             iconAnchor: [20, 20]
         });
         
-        let marker = null; 
+        // ★ GPSを待たずに、最初から画面にマーカーを表示しておく（これで解決します）
+        let marker = L.marker(defaultCoords, { icon: compassIcon }).addTo(map); 
+        
         let isTracking = false;
-        let currentHeading = 0; // スマホの最新の向き（方位角）を記憶
+        let currentHeading = 0; 
+        let isFirstLocation = true; // 初回だけ画面の中心を現在地にするためのフラグ
 
-        // 3. 移動に連動して現在地を更新し続ける（watchPosition）
+        // 3. 移動に連動して位置を更新（watchPosition）
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
                 (position) => {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     
-                    if (!marker) {
-                        // 初回取得：マーカーを作成し地図の中心へ
-                        marker = L.marker([lat, lng], { icon: compassIcon }).addTo(map);
+                    // マーカーの位置をリアルタイムに移動
+                    marker.setLatLng([lat, lng]);
+
+                    // 最初だけ、現在地にカメラ（地図の中心）をジャンプさせる
+                    if (isFirstLocation) {
                         map.setView([lat, lng], 17);
-                    } else {
-                        // 2回目以降：移動に合わせて位置だけを更新
-                        marker.setLatLng([lat, lng]);
+                        isFirstLocation = false;
                     }
                 },
                 (error) => {
@@ -142,22 +147,20 @@
             );
         }
 
-        // 4. マーカーの向きを更新する共通関数
+        // 4. マーカーの向きを更新する関数
         function updateMarkerRotation() {
             const arrowDiv = document.getElementById('arrow');
             if (arrowDiv) {
-                // ★地図自体が2本指で回転している角度（map.getBearing）を差し引くことで、
-                // 地図がどう回っても矢印は常に「現実の正しい方角」を向き続けます。
                 const mapBearing = map.getBearing() || 0;
                 const visualAngle = currentHeading - mapBearing;
                 arrowDiv.style.transform = `rotate(${visualAngle}deg)`;
             }
         }
 
-        // 5. 2本指で地図を回転させたときにもマーカーの向きをリアルタイム追従させる
+        // 2本指で地図を回転させたときにもマーカーの向きを追従
         map.on('rotate', updateMarkerRotation);
 
-        // 6. センサー情報（スマホの向き）を取得して反映
+        // 5. センサー情報（スマホの向き）を取得して反映
         function handleOrientation(event) {
             document.getElementById('val-alpha').innerText = event.alpha ? event.alpha.toFixed(1) : '0.0';
             document.getElementById('val-beta').innerText = event.beta ? event.beta.toFixed(1) : '0.0';
@@ -172,11 +175,11 @@
 
             if (heading !== null) {
                 currentHeading = heading;
-                updateMarkerRotation();
+                updateMarkerRotation(); // マーカーの回転を実行
             }
         }
 
-        // 7. ボタン連動処理
+        // 6. ボタン連動処理
         function toggleCompass() {
             const btn = document.getElementById('compass-btn');
 
