@@ -3,10 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Leaflet Rotate</title>
+    <title>Leaflet Rotate & Compass</title>
     
+    <!-- 1. Leaflet 標準の CSS と JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- 2. 地図回転プラグインの CSS と JS（2本指回転に必須） -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <script src="https://unpkg.com"></script>
 
     <style>
         html, body {
@@ -15,7 +20,7 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            font-family:sans-serif;
+            font-family: sans-serif;
         }
         #map {
             width: 100%;
@@ -25,56 +30,56 @@
             left: 0;
             z-index: 1;
         }
-        #control-panel{
-            position:absolute;
-            top:16px;
-            right:16px;
-            z-index:1000;
-            background:rgba(255,255,255,0.95);
-            padding:12px;
-            border-radius:12px;
-            box-shadow:0 4px 12px rgba(0,0,0,0.15);
-            display:flex;
-            flex-direction:column;
-            gap:8px;
-            min-width:130px;
+        #control-panel {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 130px;
         }
         
         #compass-btn {
-            background:#007AFF;
-            color:white;
-            border:none;
-            padding:10px 16px;
-            border-radius:8px;
-            font-weight:bold;
-            font-size:14px;
-            cursor:pointer;
-            transition:background 0.2s;
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
         }
         
         #compass-btn.active {
             background: #4CD964;
         }
 
-        .sensor-data{
-            font-size:12px;
-            color:#333;
-            margin:0;
-            left-height:1.4;
-            font-family:monospace;
+        .sensor-data {
+            font-size: 12px;
+            color: #333;
+            margin: 0;
+            line-height: 1.4;
+            font-family: monospace;
         }
         /* 羅針盤（矢印マーカー）のスタイル */
         .compass-arrow {
             font-size: 32px;
             text-align: center;
             line-height: 1;
-            transition: transform 0.1s linear; /* 回転を滑らかにする */
+            /* 地図回転と連動するため transition は無しがスムーズです */
         }
     </style>
 </head>
 <body>
 
-    <!-- 地図の上に重ねる操作パネル -->
+    <!-- 操作パネル -->
     <div id="control-panel">
         <button id="compass-btn" onclick="toggleCompass()">コンパス開始</button>
         <div>
@@ -87,8 +92,12 @@
     <div id="map"></div>
 
     <script>
-        // 1. 地図の初期化（仮の初期位置）
-        const map = L.map('map').setView([37.94413,139.33510], 16);
+        // 1. 地図の初期化（回転プラグインのオプションを有効化）
+        const map = L.map('map', {
+            rotate: true,          // 回転機能を有効化
+            touchRotate: true,     // ★2本指での地図回転を有効化
+            rotateControl: false   // 標準のコンパスマーク（右上のパネルと被るため非表示）
+        }).setView([37.94413, 139.33510], 16);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
@@ -98,41 +107,58 @@
         const compassIcon = L.divIcon({
             html: '<div id="arrow" class="compass-arrow">⬆️</div>',
             className: 'custom-div-icon',
-            iconSize:[40,40],
-            iconAnchor: [16, 16]
+            iconSize:,
+            iconAnchor: [20, 20]
         });
         
         let marker = null; 
         let isTracking = false;
-        let currentHeading = 0;
+        let currentHeading = 0; // スマホの最新の向き（方位角）を記憶
 
-        // 3. 現在地を取得して地図の初期位置にする
+        // 3. 移動に連動して現在地を更新し続ける（watchPosition）
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
+            navigator.geolocation.watchPosition(
                 (position) => {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
-                    if(!marker){
-                        marker = L.marker([lat,lng],{icon:compassIcon}).addTo(map);
-                        map.setView([lat,lng],17);
-                    }else{
-                        marker.setLatLng([lat,lng]);
+                    
+                    if (!marker) {
+                        // 初回取得：マーカーを作成し地図の中心へ
+                        marker = L.marker([lat, lng], { icon: compassIcon }).addTo(map);
+                        map.setView([lat, lng], 17);
+                    } else {
+                        // 2回目以降：移動に合わせて位置だけを更新
+                        marker.setLatLng([lat, lng]);
                     }
                 },
                 (error) => {
-                    console.error("位置情報の追従に失敗:",error);
+                    console.error("位置情報の追従に失敗:", error);
                 },
                 {
-                    enableHighAccuracy:true,
-                    maximumAge:0,
-                    timeout:5000
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 5000
                 }
             );
         }
 
-        // 4. センサー情報を取得して反映
+        // 4. マーカーの向きを更新する共通関数
+        function updateMarkerRotation() {
+            const arrowDiv = document.getElementById('arrow');
+            if (arrowDiv) {
+                // ★地図自体が2本指で回転している角度（map.getBearing）を差し引くことで、
+                // 地図がどう回っても矢印は常に「現実の正しい方角」を向き続けます。
+                const mapBearing = map.getBearing() || 0;
+                const visualAngle = currentHeading - mapBearing;
+                arrowDiv.style.transform = `rotate(${visualAngle}deg)`;
+            }
+        }
+
+        // 5. 2本指で地図を回転させたときにもマーカーの向きをリアルタイム追従させる
+        map.on('rotate', updateMarkerRotation);
+
+        // 6. センサー情報（スマホの向き）を取得して反映
         function handleOrientation(event) {
-            // パネルの数値を更新
             document.getElementById('val-alpha').innerText = event.alpha ? event.alpha.toFixed(1) : '0.0';
             document.getElementById('val-beta').innerText = event.beta ? event.beta.toFixed(1) : '0.0';
             document.getElementById('val-gamma').innerText = event.gamma ? event.gamma.toFixed(1) : '0.0';
@@ -144,16 +170,13 @@
                 heading = 360 - event.alpha; // Android
             }
 
-            if (heading !== null && marker) {
+            if (heading !== null) {
                 currentHeading = heading;
-                const arrowDiv = document.getElementById('arrow');
-                if (arrowDiv) {
-                    arrowDiv.style.transform = `rotate(${heading}deg)`;
-                }
+                updateMarkerRotation();
             }
         }
 
-        // 5. ボタン連動処理
+        // 7. ボタン連動処理
         function toggleCompass() {
             const btn = document.getElementById('compass-btn');
 
@@ -163,8 +186,8 @@
                 btn.innerText = 'コンパス開始';
                 btn.classList.remove('active');
                 
-                const arrowDiv = document.getElementById('arrow');
-                if (arrowDiv) arrowDiv.style.transform = 'rotate(0deg)';
+                currentHeading = 0;
+                updateMarkerRotation();
                 isTracking = false;
                 return;
             }
