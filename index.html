@@ -2,18 +2,13 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Leaflet スマホ方位角連動</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>leafletrotate</title>
     
-    <!-- 1. Leaflet の CSS と JS -->
-    <link rel="stylesheet" href="https://unpkg.com" />
-    <script src="https://unpkg.com"></script>
-
-    <!-- 2. 安定性の高い最新の Leaflet.Rotate プラグイン（最新版に修正） -->
-    <script src="https://unpkg.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leafet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        /* 画面いっぱいに地図を表示するための必須設定 */
         html, body {
             width: 100vw;
             height: 100vh;
@@ -29,7 +24,6 @@
             left: 0;
             z-index: 1;
         }
-        /* コンパス開始ボタンのスタイル */
         #compass-btn {
             position: absolute;
             top: 20px;
