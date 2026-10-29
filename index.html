@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <!-- 2. 地図回転プラグインの CSS と JS（2本指回転に必須） -->
     <link rel="stylesheet" href="https://unpkg.com" />
     <script src="https://unpkg.com"></script>
 
@@ -72,6 +71,7 @@
             font-size: 32px;
             text-align: center;
             line-height: 1;
+            transform:rotate(calc(var(--heading,0deg)-var)--map-rotation,0deg)));
         }
     </style>
 </head>
@@ -94,11 +94,7 @@
         const defaultCoords = [37.94413, 139.33510];
 
         // 1. 地図の初期化
-        const map = L.map('map', {
-            rotate: true,          
-            touchRotate: true,     // 2本指での地図回転を有効化
-            rotateControl: false   
-        }).setView(defaultCoords, 16);
+        const map = L.map('map').setView(defaultCoords, 16);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
@@ -111,13 +107,12 @@
             iconSize:[40,40],
             iconAnchor: [20, 20]
         });
-        
-        // ★ GPSを待たずに、最初から画面にマーカーを表示しておく（これで解決します）
+
+        //起動直後からマーカー表示
         let marker = L.marker(defaultCoords, { icon: compassIcon }).addTo(map); 
         
         let isTracking = false;
-        let currentHeading = 0; 
-        let isFirstLocation = true; // 初回だけ画面の中心を現在地にするためのフラグ
+        let isFirstLocation = true;
 
         // 3. 移動に連動して位置を更新（watchPosition）
         if (navigator.geolocation) {
@@ -146,20 +141,33 @@
             );
         }
 
-        // 4. マーカーの向きを更新する関数
-        function updateMarkerRotation() {
-            const arrowDiv = document.getElementById('arrow');
-            if (arrowDiv) {
-                const mapBearing = map.getBearing() || 0;
-                const visualAngle = currentHeading - mapBearing;
-                arrowDiv.style.transform = `rotate(${visualAngle}deg)`;
+        let startAngle=0;
+        let currentMapAngle=0;
+
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                // 2本の指の結ぶ角度を計算
+                startAngle = Math.atan2(e.touches[1].pageY - e.touches[0].pageY, e.touches[1].pageX - e.touches[0].pageX) * 180 / Math.PI;
             }
-        }
+        });
 
-        // 2本指で地図を回転させたときにもマーカーの向きを追従
-        map.on('rotate', updateMarkerRotation);
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                const nowAngle = Math.atan2(e.touches[1].pageY - e.touches[0].pageY, e.touches[1].pageX - e.touches[0].pageX) * 180 / Math.PI;
+                // 指をひねった分の角度を算出
+                const diffAngle = nowAngle - startAngle;
+                currentMapAngle += diffAngle;
+                startAngle = nowAngle;
 
-        // 5. センサー情報（スマホの向き）を取得して反映
+                // 地図のHTML要素（#map）だけを丸ごとCSSで回転させる！
+                const mapEl = document.getElementById('map');
+                mapEl.style.transform = `rotate(${currentMapAngle}deg)`;
+
+                // 矢印マーカー側にも「地図がどれだけ回転しているか」を伝える
+                document.documentElement.style.setProperty('--map-rotation', `${currentMapAngle}deg`);
+            }
+        });
+
         function handleOrientation(event) {
             document.getElementById('val-alpha').innerText = event.alpha ? event.alpha.toFixed(1) : '0.0';
             document.getElementById('val-beta').innerText = event.beta ? event.beta.toFixed(1) : '0.0';
@@ -187,9 +195,7 @@
                 window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
                 btn.innerText = 'コンパス開始';
                 btn.classList.remove('active');
-                
-                currentHeading = 0;
-                updateMarkerRotation();
+                document.documentElement.style.setProperty('--heading','0deg');
                 isTracking = false;
                 return;
             }
