@@ -57,20 +57,21 @@
     <div id="map"></div>
 
     <script>
-        // 1. 地図の初期化（rotate: true）
-        const map = L.map('map', {
+        // 1. 地図の初期化
+        const map = L.map('map',{
             rotate: true,
             touchRotate: true,
             rotateControl: true
-        }).setView([35.681236, 139.767125], 16); // 東京駅周辺
+        }).setView([35.681236, 139.767125], 16);
 
         // 2. 背景地図（OpenStreetMap）の追加
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; FullOSM'
+            attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
         // 3. 中心にマーカーを設置
         L.marker([35.681236, 139.767125]).addTo(map);
+
 
         let isTracking = false;
 
