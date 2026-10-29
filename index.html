@@ -19,15 +19,28 @@
             padding: 0;
             overflow: hidden;
             font-family: sans-serif;
+            background-color: #f4f4f4;
         }
-        #map {
+        
+        /* 2本指操作の対象となるコンテナ（背景の地図要素） */
+        #map-container {
             width: 100%;
             height: 100%;
             position: absolute;
             top: 0;
             left: 0;
             z-index: 1;
+            /* 指をひねった角度に合わせて、地図の入った箱ごとCSSで回転させます */
+            transform: rotate(calc(var(--map-rotation, 0deg)));
+            transform-origin: center center;
         }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 右上の操作パネル */
         #control-panel {
             position: absolute;
             top: 16px;
@@ -42,7 +55,7 @@
             gap: 8px;
             min-width: 130px;
         }
-        
+
         #compass-btn {
             background: #007AFF;
             color: white;
@@ -66,12 +79,14 @@
             line-height: 1.4;
             font-family: monospace;
         }
+
         /* 羅針盤（矢印マーカー）のスタイル */
         .compass-arrow {
-            font-size: 32px;
+            font-size: 36px;
             text-align: center;
             line-height: 1;
-            transform:rotate(calc(var(--heading,0deg)-var)--map-rotation,0deg)));
+            /* ★超重要：地図が2本指でいくら回転しても、矢印は常に「現実の正しい方角」をピタッと指し続ける数式 */
+            transform: rotate(calc(var(--heading, 0deg) - var(--map-rotation, 0deg)));
         }
     </style>
 </head>
@@ -87,14 +102,19 @@
         </div>
     </div>
 
-    <div id="map"></div>
+    <!-- 地図を包む回転用コンテナ -->
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
 
     <script>
-        // 初期位置（仮の設定）
+        // 初期の仮位置（GPSが取れるまでの表示用）
         const defaultCoords = [37.94413, 139.33510];
 
-        // 1. 地図の初期化
-        const map = L.map('map').setView(defaultCoords, 16);
+        // 1. 地図の初期化（ Leaflet 標準の軽量な初期化のみを行います）
+        const map = L.map('map', {
+            zoomControl: true
+        }).setView(defaultCoords, 16);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
@@ -104,27 +124,27 @@
         const compassIcon = L.divIcon({
             html: '<div id="arrow" class="compass-arrow">⬆️</div>',
             className: 'custom-div-icon',
-            iconSize:[40,40],
+            iconSize:,
             iconAnchor: [20, 20]
         });
-
-        //起動直後からマーカー表示
+        
+        // 起動直後から仮位置にマーカーを表示（GPSフリーズ対策）
         let marker = L.marker(defaultCoords, { icon: compassIcon }).addTo(map); 
         
         let isTracking = false;
-        let isFirstLocation = true;
+        let isFirstLocation = true; 
 
-        // 3. 移動に連動して位置を更新（watchPosition）
+        // 3. 移動に連動して現在地を更新し続ける（watchPosition）
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
                 (position) => {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     
-                    // マーカーの位置をリアルタイムに移動
+                    // マーカーの位置を自動で動かす
                     marker.setLatLng([lat, lng]);
 
-                    // 最初だけ、現在地にカメラ（地図の中心）をジャンプさせる
+                    // 初回のみ、現在地を画面中央にする
                     if (isFirstLocation) {
                         map.setView([lat, lng], 17);
                         isFirstLocation = false;
@@ -133,41 +153,38 @@
                 (error) => {
                     console.error("位置情報の追従に失敗:", error);
                 },
-                {
-                    enableHighAccuracy: true,
-                    maximumAge: 0,
-                    timeout: 5000
-                }
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
             );
         }
 
-        let startAngle=0;
-        let currentMapAngle=0;
+        // 4. ★バグの原因となる外部プラグインに頼らず、2本指ジェスチャーを自前で正確に計算
+        let startAngle = 0;
+        let currentMapAngle = 0;
+        const mapContainer = document.getElementById('map-container');
 
         window.addEventListener('touchstart', (e) => {
             if (e.touches.length === 2) {
-                // 2本の指の結ぶ角度を計算
+                // 2本の指が結ぶ直線の初期角度を計算
                 startAngle = Math.atan2(e.touches[1].pageY - e.touches[0].pageY, e.touches[1].pageX - e.touches[0].pageX) * 180 / Math.PI;
             }
-        });
+        }, { passive: true });
 
         window.addEventListener('touchmove', (e) => {
             if (e.touches.length === 2) {
+                // 動いたあとの2本の指の角度を計算
                 const nowAngle = Math.atan2(e.touches[1].pageY - e.touches[0].pageY, e.touches[1].pageX - e.touches[0].pageX) * 180 / Math.PI;
-                // 指をひねった分の角度を算出
+                // ひねった分の差分角度を算出
                 const diffAngle = nowAngle - startAngle;
+                
                 currentMapAngle += diffAngle;
                 startAngle = nowAngle;
 
-                // 地図のHTML要素（#map）だけを丸ごとCSSで回転させる！
-                const mapEl = document.getElementById('map');
-                mapEl.style.transform = `rotate(${currentMapAngle}deg)`;
-
-                // 矢印マーカー側にも「地図がどれだけ回転しているか」を伝える
-                document.documentElement.style.setProperty('--map-rotation', `${currentMapAngle}deg`);
+                // 地図コンテナ全体をCSSで回転させる
+                mapContainer.style.setProperty('--map-rotation', `${currentMapAngle}deg`);
             }
-        });
+        }, { passive: true });
 
+        // 5. センサー情報（スマホの向き）を取得して反映
         function handleOrientation(event) {
             document.getElementById('val-alpha').innerText = event.alpha ? event.alpha.toFixed(1) : '0.0';
             document.getElementById('val-beta').innerText = event.beta ? event.beta.toFixed(1) : '0.0';
@@ -175,18 +192,18 @@
 
             let heading = null;
             if (event.webkitCompassHeading !== undefined) {
-                heading = event.webkitCompassHeading; // iOS
+                heading = event.webkitCompassHeading; // iOS (Safari)
             } else if (event.alpha !== null) {
-                heading = 360 - event.alpha; // Android
+                heading = 360 - event.alpha; // Android (Chrome)
             }
 
             if (heading !== null) {
-                currentHeading = heading;
-                updateMarkerRotation(); // マーカーの回転を実行
+                // 矢印マーカーにスマホの向きをCSS変数で渡す
+                document.documentElement.style.setProperty('--heading', `${heading}deg`);
             }
         }
 
-        // 6. ボタン連動処理
+        // 6. ボタン連動処理（iOSのセキュリティ制限解除対応）
         function toggleCompass() {
             const btn = document.getElementById('compass-btn');
 
@@ -195,7 +212,7 @@
                 window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
                 btn.innerText = 'コンパス開始';
                 btn.classList.remove('active');
-                document.documentElement.style.setProperty('--heading','0deg');
+                document.documentElement.style.setProperty('--heading', '0deg');
                 isTracking = false;
                 return;
             }
@@ -206,7 +223,7 @@
                         if (permissionState === 'granted') {
                             startListening();
                         } else {
-                            alert('方位情報の取得が拒否されました。');
+                            alert('方位情報の取得が拒否されました。設定アプリからモーションセンサーを許可してください。');
                         }
                     })
                     .catch(console.error);
@@ -228,4 +245,5 @@
         }
     </script>
 </body>
+</html>
 </html>
